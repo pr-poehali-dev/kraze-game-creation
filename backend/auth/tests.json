@@ -1,0 +1,26 @@
+{
+  "tests": [
+    {
+      "name": "Create new user",
+      "method": "GET",
+      "path": "/?username=testuser123",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "id": "number",
+        "username": "testuser123",
+        "balance": 1000
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get existing user",
+      "method": "GET",
+      "path": "/?username=testuser123",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "username": "testuser123"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

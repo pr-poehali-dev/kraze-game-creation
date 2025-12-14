@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "Save game result",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "user_id": 1,
+        "result": "win",
+        "bet_amount": 100,
+        "multiplier": 2.5,
+        "win_amount": 250
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "game_id": "number",
+        "balance": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

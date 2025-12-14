@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
+import AuthDialog from '@/components/AuthDialog';
 
 interface Circle {
   id: string;
@@ -24,6 +25,7 @@ interface Puck {
   active: boolean;
   distance: number;
   stopped: boolean;
+  targetDistance: number;
 }
 
 interface Bet {
@@ -40,12 +42,20 @@ interface RoundHistory {
   winAmount: number;
 }
 
+interface User {
+  id: number;
+  username: string;
+  balance: number;
+}
+
 const Index = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [circles, setCircles] = useState<Circle[]>([]);
-  const [puck, setPuck] = useState<Puck>({ x: 0, y: 0, vx: 0, vy: 0, active: false, distance: 0, stopped: false });
+  const [puck, setPuck] = useState<Puck>({ x: 0, y: 0, vx: 0, vy: 0, active: false, distance: 0, stopped: false, targetDistance: 0 });
+  const [user, setUser] = useState<User | null>(null);
   const [balance, setBalance] = useState(1000);
   const [betAmount, setBetAmount] = useState(10);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [timeUntilLaunch, setTimeUntilLaunch] = useState(30);
   const [currentBet, setCurrentBet] = useState<Bet | null>(null);
   const [isPlacingCircle, setIsPlacingCircle] = useState(false);
@@ -65,8 +75,62 @@ const Index = () => {
   const MAX_RADIUS = 120;
   const ROUND_DURATION = 30000;
 
+  useEffect(() => {
+    const savedUser = localStorage.getItem('kraze_user');
+    if (savedUser) {
+      const userData = JSON.parse(savedUser);
+      setUser(userData);
+      setBalance(userData.balance);
+    } else {
+      setShowAuthDialog(true);
+    }
+  }, []);
+
+  const handleAuthSuccess = (userData: User) => {
+    setUser(userData);
+    setBalance(userData.balance);
+    setShowAuthDialog(false);
+  };
+
+  const saveGameResult = async (result: 'win' | 'loss', multiplier: number, betAmt: number, winAmt: number) => {
+    if (!user) return;
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/e225bcad-1fed-4a6a-b91e-b11c5223beb9', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          result,
+          bet_amount: betAmt,
+          multiplier,
+          win_amount: winAmt,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBalance(data.balance);
+        const updatedUser = { ...user, balance: data.balance };
+        setUser(updatedUser);
+        localStorage.setItem('kraze_user', JSON.stringify(updatedUser));
+      }
+    } catch (error) {
+      console.error('Failed to save game result:', error);
+    }
+  };
+
   const calculateMultiplier = (radius: number) => {
-    return Math.max(1.2, (MAX_RADIUS / radius) * 1.2).toFixed(2);
+    const minDiameter = CANVAS_HEIGHT / 20;
+    const maxDiameter = CANVAS_HEIGHT * 0.8;
+    const diameter = radius * 2;
+    
+    if (diameter <= minDiameter) return 10;
+    if (diameter >= maxDiameter) return 1;
+    
+    const ratio = (diameter - minDiameter) / (maxDiameter - minDiameter);
+    const multiplier = 10 - (ratio * 9);
+    return Math.max(1, multiplier).toFixed(2);
   };
 
   const launchPuck = () => {
@@ -76,23 +140,27 @@ const Index = () => {
     const targetDistance = minDistance + Math.random() * (maxDistance - minDistance);
     maxDistanceRef.current = targetDistance;
 
-    const duration = 3000 + Math.random() * 7000;
-    const speed = targetDistance / (duration / 16);
+    const startSpeed = 15;
 
     setPuck({
       x: CANVAS_WIDTH / 2,
-      y: CANVAS_HEIGHT - 50,
-      vx: Math.sin(angle) * (speed / 60),
-      vy: -Math.cos(angle) * (speed / 60),
+      y: CANVAS_HEIGHT - PUCK_RADIUS,
+      vx: Math.sin(angle) * startSpeed,
+      vy: -Math.cos(angle) * startSpeed,
       active: true,
       distance: 0,
       stopped: false,
+      targetDistance,
     });
 
     lastLaunchRef.current = Date.now();
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!user) {
+      setShowAuthDialog(true);
+      return;
+    }
     if (puck.active || currentBet || timeUntilLaunch < 5) return;
     if (betAmount > balance) {
       toast.error('Недостаточно средств');
@@ -146,7 +214,15 @@ const Index = () => {
       amount: betAmount,
       multiplier,
     });
-    setBalance((prev) => prev - betAmount);
+    const newBalance = balance - betAmount;
+    setBalance(newBalance);
+    
+    if (user) {
+      const updatedUser = { ...user, balance: newBalance };
+      setUser(updatedUser);
+      localStorage.setItem('kraze_user', JSON.stringify(updatedUser));
+    }
+    
     toast.success(`Ставка ${betAmount}₽ принята! x${multiplier}`, {
       style: { background: '#1a2332', color: '#fff', border: '1px solid #2d3748' }
     });
@@ -166,7 +242,8 @@ const Index = () => {
       
       setTimeUntilLaunch(remaining);
 
-      if (remaining === 0 && !puck.active && !puck.stopped) {
+      if (remaining === -5 && !puck.active) {
+        setPuck({ x: 0, y: 0, vx: 0, vy: 0, active: false, distance: 0, stopped: false, targetDistance: 0 });
         launchPuck();
         setCircles([]);
         setCurrentBet(null);
@@ -261,18 +338,27 @@ const Index = () => {
         const newPuck = { ...puck };
 
         if (puck.active && !puck.stopped) {
+          const friction = 0.985;
+          newPuck.vx *= friction;
+          newPuck.vy *= friction;
+          
           newPuck.x += newPuck.vx;
           newPuck.y += newPuck.vy;
           newPuck.distance += Math.sqrt(newPuck.vx * newPuck.vx + newPuck.vy * newPuck.vy);
 
           if (newPuck.x - PUCK_RADIUS < 0 || newPuck.x + PUCK_RADIUS > CANVAS_WIDTH) {
-            newPuck.vx *= -1;
+            newPuck.vx *= -0.8;
             newPuck.x = Math.max(PUCK_RADIUS, Math.min(CANVAS_WIDTH - PUCK_RADIUS, newPuck.x));
           }
           if (newPuck.y - PUCK_RADIUS < 0 || newPuck.y + PUCK_RADIUS > CANVAS_HEIGHT) {
-            newPuck.vy *= -1;
+            newPuck.vy *= -0.8;
             newPuck.y = Math.max(PUCK_RADIUS, Math.min(CANVAS_HEIGHT - PUCK_RADIUS, newPuck.y));
           }
+          
+          const currentSpeed = Math.sqrt(newPuck.vx * newPuck.vx + newPuck.vy * newPuck.vy);
+          if (currentSpeed < 0.1 || newPuck.distance >= newPuck.targetDistance) {
+            newPuck.vx = 0;
+            newPuck.vy = 0;
 
           let hitDetected = false;
           circles.forEach((circle) => {
@@ -283,7 +369,6 @@ const Index = () => {
             if (distance < PUCK_RADIUS + circle.radius && !hitDetected) {
               hitDetected = true;
               const winAmount = Math.floor(circle.betAmount * circle.multiplier);
-              setBalance((prev) => prev + winAmount);
               toast.success(`ВЫИГРЫШ! +${winAmount}₽ (x${circle.multiplier})`, {
                 style: { background: '#22c55e', color: '#fff', fontWeight: 'bold' }
               });
@@ -294,25 +379,29 @@ const Index = () => {
                 amount: circle.betAmount,
                 winAmount
               }, ...prev.slice(0, 9)]);
+              saveGameResult('win', circle.multiplier, circle.betAmount, winAmount);
               newPuck.active = false;
               newPuck.stopped = true;
             }
           });
 
-          if (newPuck.distance >= maxDistanceRef.current && !hitDetected) {
-            newPuck.active = false;
-            newPuck.stopped = true;
-            if (currentBet) {
-              toast.error('Проигрыш! Шайба не попала в круг', {
-                style: { background: '#dc2626', color: '#fff', fontWeight: 'bold' }
-              });
-              setRoundHistory(prev => [{
-                id: Date.now(),
-                result: 'loss',
-                multiplier: currentBet.multiplier,
-                amount: currentBet.amount,
-                winAmount: 0
-              }, ...prev.slice(0, 9)]);
+          
+            if (!hitDetected) {
+              newPuck.active = false;
+              newPuck.stopped = true;
+              if (currentBet) {
+                toast.error('Проигрыш! Шайба не попала в круг', {
+                  style: { background: '#dc2626', color: '#fff', fontWeight: 'bold' }
+                });
+                setRoundHistory(prev => [{
+                  id: Date.now(),
+                  result: 'loss',
+                  multiplier: currentBet.multiplier,
+                  amount: currentBet.amount,
+                  winAmount: 0
+                }, ...prev.slice(0, 9)]);
+                saveGameResult('loss', currentBet.multiplier, currentBet.amount, 0);
+              }
             }
           }
         }
@@ -356,7 +445,9 @@ const Index = () => {
   }, [circles, puck, isPlacingCircle, previewRadius, previewPosition]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
+      <AuthDialog open={showAuthDialog} onAuthSuccess={handleAuthSuccess} />
+      <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6 max-w-[1400px]">
         <div className="grid lg:grid-cols-[1fr_380px] gap-6">
           <div className="space-y-4">
@@ -431,7 +522,7 @@ const Index = () => {
             <Card className="bg-card border-border p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <div className="text-sm text-muted-foreground">Баланс</div>
+                  <div className="text-sm text-muted-foreground">{user?.username || 'Игрок'}</div>
                   <div className="text-3xl font-bold text-primary">{balance}₽</div>
                 </div>
                 <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
@@ -525,6 +616,7 @@ const Index = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
