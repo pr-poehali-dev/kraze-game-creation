@@ -6,35 +6,35 @@
 
 @layer base {
   :root {
-    --background: 18 100% 97%;
-    --foreground: 240 10% 25%;
+    --background: 220 20% 12%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 25%;
+    --card: 220 18% 16%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 25%;
+    --popover: 220 18% 16%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 350 100% 88%;
-    --primary-foreground: 350 80% 35%;
+    --primary: 340 80% 55%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 205 100% 94%;
-    --secondary-foreground: 205 80% 35%;
+    --secondary: 220 18% 20%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 45 100% 95%;
-    --muted-foreground: 45 30% 45%;
+    --muted: 220 18% 18%;
+    --muted-foreground: 215 20% 60%;
 
-    --accent: 270 100% 95%;
-    --accent-foreground: 270 70% 40%;
+    --accent: 160 60% 45%;
+    --accent-foreground: 210 40% 98%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 240 20% 90%;
-    --input: 240 20% 92%;
-    --ring: 270 70% 70%;
+    --border: 220 18% 24%;
+    --input: 220 18% 20%;
+    --ring: 340 80% 55%;
 
-    --radius: 1.25rem;
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -100,5 +100,19 @@
   body {
     @apply bg-background text-foreground;
     font-family: "Rubik", sans-serif;
+  }
+}
+
+@layer utilities {
+  .glow-primary {
+    box-shadow:
+      0 0 20px rgba(220, 38, 38, 0.5),
+      0 0 40px rgba(220, 38, 38, 0.3);
+  }
+
+  .glow-accent {
+    box-shadow:
+      0 0 20px rgba(34, 197, 94, 0.5),
+      0 0 40px rgba(34, 197, 94, 0.3);
   }
 }
